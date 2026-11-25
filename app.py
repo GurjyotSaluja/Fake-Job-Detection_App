@@ -35,6 +35,7 @@ def predict(job:Job):
         'required_experience':job.required_experience,
         'telecommuting':job.telecommuting,
         'has_company_logo':job.has_company_logo,
+        'required_education': job.required_education,
         'has_questions': job.has_questions
 
     }])
