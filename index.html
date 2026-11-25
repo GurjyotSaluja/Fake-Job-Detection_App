@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ScamRadar | Fake job posting detector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07070d;
+    --glass: rgba(255,255,255,.045);
+    --glass-2: rgba(255,255,255,.075);
+    --line: rgba(255,255,255,.1);
+    --text: #eceef6;
+    --soft: #9aa0b8;
+    --iris: #7c6cff;
+    --cyan: #35e0ff;
+    --coral: #ff5a7a;
+    --amber: #ffb454;
+    --mint: #46f0b4;
+    --display: "Unbounded", "Segoe UI", sans-serif;
+    --body: "Manrope", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: var(--body); line-height: 1.55; overflow-x: hidden;
+  }
+  body::before { /* ambient light + faint grid */
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(700px 500px at 85% -5%, rgba(124,108,255,.28), transparent 70%),
+      radial-gradient(600px 500px at -5% 35%, rgba(53,224,255,.12), transparent 70%),
+      linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px) 0 0 / 56px 56px,
+      linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px) 0 0 / 56px 56px;
+    mask-image: linear-gradient(to bottom, #000 40%, transparent 100%);
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; border-radius: 6px; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px; }
+
+  /* nav */
+  nav { position: sticky; top: 0; z-index: 30; backdrop-filter: blur(14px); background: rgba(7,7,13,.65); border-bottom: 1px solid var(--line); }
+  .nav-in { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 1.02rem; text-decoration: none; color: var(--text); }
+  .logo i { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--cyan); position: relative; box-shadow: 0 0 14px rgba(53,224,255,.5); }
+  .logo i::after { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0 70%, var(--cyan)); animation: spin 2.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .links { display: flex; gap: 26px; font-size: .92rem; }
+  .links a { color: var(--soft); text-decoration: none; transition: color .15s; }
+  .links a:hover { color: var(--text); }
+  @media (max-width: 760px) { .links { display: none; } }
+
+  /* hero */
+  .hero { display: grid; grid-template-columns: 1.15fr 1fr; gap: 30px; align-items: center; padding: 70px 0 40px; }
+  @media (max-width: 960px) { .hero { grid-template-columns: 1fr; padding-top: 40px; } }
+  .pill { display: inline-flex; gap: 8px; align-items: center; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--glass); font-size: .82rem; color: var(--soft); margin-bottom: 22px; }
+  .pill b { color: var(--cyan); font-weight: 600; }
+  h1 { font-family: var(--display); font-weight: 800; font-size: clamp(2.4rem, 5.6vw, 4.6rem); line-height: 1.02; letter-spacing: -.035em; margin: 0 0 22px; }
+  h1 em { font-style: normal; background: linear-gradient(95deg, var(--cyan), var(--iris) 55%, var(--coral)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { color: var(--soft); font-size: 1.12rem; max-width: 54ch; margin: 0 0 32px; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn { border: 0; cursor: pointer; border-radius: 12px; padding: 14px 24px; font-weight: 700; font-size: .98rem; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: transform .15s, box-shadow .2s, background .2s; }
+  .btn.pri { background: linear-gradient(120deg, var(--iris), #5a8bff 60%, var(--cyan)); color: #060612; box-shadow: 0 10px 34px -10px rgba(124,108,255,.8); }
+  .btn.pri:hover { transform: translateY(-2px); box-shadow: 0 16px 40px -10px rgba(124,108,255,.95); }
+  .btn.sec { background: var(--glass); border: 1px solid var(--line); color: var(--text); }
+  .btn.sec:hover { background: var(--glass-2); transform: translateY(-2px); }
+  .btn:disabled { opacity: .6; cursor: progress; transform: none; }
+  .orb-wrap { position: relative; justify-self: center; width: min(460px, 92vw); aspect-ratio: 1; }
+  #orb { width: 100%; height: 100%; display: block; }
+  .orb-tag { position: absolute; font-family: var(--mono); font-size: .72rem; padding: 5px 10px; border-radius: 8px; background: rgba(13,13,24,.85); border: 1px solid var(--line); white-space: nowrap; }
+  .orb-tag.bad { color: var(--coral); border-color: rgba(255,90,122,.45); top: 14%; right: 2%; }
+  .orb-tag.ok { color: var(--mint); border-color: rgba(70,240,180,.4); bottom: 16%; left: 0; }
+
+
+  /* sections */
+  section.block { padding: 40px 0 70px; scroll-margin-top: 70px; }
+  .head { margin-bottom: 30px; max-width: 62ch; }
+  .head h2 { font-family: var(--display); font-weight: 600; font-size: clamp(1.6rem, 3.2vw, 2.4rem); letter-spacing: -.03em; line-height: 1.12; margin: 0 0 10px; }
+  .head p { margin: 0; color: var(--soft); }
+
+  .glass { background: var(--glass); border: 1px solid var(--line); border-radius: 22px; backdrop-filter: blur(10px); position: relative; }
+  .console { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  @media (max-width: 980px) { .console { grid-template-columns: 1fr; } }
+
+  /* form */
+  .panel-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 24px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .panel-h h3 { margin: 0; font-size: 1rem; font-weight: 700; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { background: var(--glass-2); border: 1px solid var(--line); border-radius: 999px; padding: 6px 13px; font-size: .8rem; cursor: pointer; transition: border-color .15s, color .15s; }
+  .chip:hover { border-color: var(--cyan); color: var(--cyan); }
+  form { padding: 22px 24px 26px; }
+  .f { margin-bottom: 16px; }
+  .f .r { display: flex; justify-content: space-between; align-items: baseline; }
+  label { display: block; font-size: .82rem; font-weight: 600; color: var(--soft); margin-bottom: 6px; }
+  .cnt { font-family: var(--mono); font-size: .7rem; color: var(--soft); }
+  input[type=text], select, textarea {
+    width: 100%; background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 12px; padding: 11px 14px; font-size: .94rem;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  textarea { resize: vertical; min-height: 84px; line-height: 1.5; }
+  textarea.tall { min-height: 150px; }
+  input:focus, select:focus, textarea:focus { outline: 0; border-color: var(--cyan); box-shadow: 0 0 0 4px rgba(53,224,255,.13); }
+  select { appearance: none; cursor: pointer; background-image: linear-gradient(45deg, transparent 50%, var(--soft) 50%), linear-gradient(135deg, var(--soft) 50%, transparent 50%); background-position: calc(100% - 18px) 54%, calc(100% - 13px) 54%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
+  select option { background: #12121e; }
+  .trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 640px) { .trio { grid-template-columns: 1fr; gap: 0; } }
+  .tgl { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(0,0,0,.25); cursor: pointer; font-size: .9rem; margin-bottom: 8px; color: var(--text); font-weight: 500; }
+  .tgl input { display: none; }
+  .sw { width: 40px; height: 22px; border-radius: 999px; background: #2b2d42; position: relative; transition: background .2s; flex: none; }
+  .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s; }
+  .tgl input:checked + .sw { background: linear-gradient(120deg, var(--iris), var(--cyan)); }
+  .tgl input:checked + .sw::after { transform: translateX(18px); }
+  .go { width: 100%; margin-top: 14px; justify-content: center; }
+  .msg { min-height: 1.4em; margin: 10px 0 0; font-size: .84rem; color: var(--soft); }
+  .msg.err { color: var(--coral); }
+
+  /* verdict */
+  .verdict { padding: 24px; position: sticky; top: 84px; --c: var(--soft); overflow: hidden; }
+  @media (max-width: 980px) { .verdict { position: relative; top: 0; } }
+  .verdict.fake { --c: var(--coral); } .verdict.check { --c: var(--amber); } .verdict.real { --c: var(--mint); }
+  .verdict::before { content: ""; position: absolute; inset: -40% -20% auto auto; width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--c) 30%, transparent), transparent 70%); pointer-events: none; }
+  .v-top { display: flex; gap: 22px; align-items: center; position: relative; flex-wrap: wrap; }
+  .gauge { width: 190px; height: 190px; position: relative; flex: none; }
+  .gauge svg { width: 100%; height: 100%; overflow: visible; }
+  .gauge .track { stroke: rgba(255,255,255,.08); }
+  .gauge .prog { stroke: var(--c); filter: drop-shadow(0 0 8px var(--c)); transition: stroke-dashoffset 1.2s cubic-bezier(.2,.8,.2,1); }
+  .gauge .tk { stroke: rgba(255,255,255,.18); }
+  .g-mid { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+  .g-mid b { font-family: var(--display); font-weight: 600; font-size: 2.5rem; letter-spacing: -.04em; line-height: 1; }
+  .g-mid span { font-size: .72rem; color: var(--soft); margin-top: 6px; }
+  .v-txt { flex: 1; min-width: 200px; }
+  .v-txt h4 { margin: 0 0 6px; font-family: var(--display); font-weight: 600; font-size: 1.4rem; letter-spacing: -.03em; color: var(--c); }
+  .v-txt p { margin: 0; color: var(--soft); font-size: .92rem; max-width: 36ch; }
+  .v-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .sub-h { margin: 26px 0 10px; font-size: .8rem; font-weight: 700; color: var(--soft); position: relative; }
+  .radar-wrap { display: grid; place-items: center; position: relative; }
+  .radar-wrap svg { width: 100%; max-width: 360px; overflow: visible; }
+  .radar-wrap text { fill: var(--soft); font-size: 10.5px; font-family: var(--body); }
+  .poly { fill: color-mix(in srgb, var(--c) 28%, transparent); stroke: var(--c); stroke-width: 2; stroke-linejoin: round; transition: all .9s cubic-bezier(.2,.8,.2,1); }
+  .dotp { fill: var(--c); transition: all .9s cubic-bezier(.2,.8,.2,1); }
+  .sig { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) 42px; gap: 10px; align-items: center; padding: 5px 0; font-size: .84rem; min-height: 32px; position: relative; }
+  .sig .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sig .n.word { font-family: var(--mono); font-weight: 500; }
+  .sig .n.field { white-space: normal; line-height: 1.25; }
+  .lane { position: relative; height: 10px; }
+  .lane::before { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--line); }
+  .lane .b { position: absolute; top: 0; bottom: 0; width: 0; border-radius: 99px; transition: width .8s cubic-bezier(.2,.8,.2,1); }
+  .lane .b.f { left: 50%; background: linear-gradient(90deg, var(--coral), #ff8aa0); box-shadow: 0 0 12px rgba(255,90,122,.5); }
+  .lane .b.r { right: 50%; background: linear-gradient(270deg, var(--mint), #8dffd6); box-shadow: 0 0 12px rgba(70,240,180,.4); }
+  .sig .v { text-align: right; font-family: var(--mono); font-size: .76rem; color: var(--soft); }
+  .axis { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) 42px; gap: 10px; font-size: .72rem; color: var(--soft); position: relative; }
+  .axis div { display: flex; justify-content: space-between; }
+  .note { margin-top: 16px; padding: 12px 14px; border-radius: 12px; font-size: .82rem; border: 1px solid rgba(255,180,84,.4); background: rgba(255,180,84,.08); color: #ffd9a6; position: relative; }
+  .idle { color: var(--soft); text-align: center; padding: 30px 8px 12px; position: relative; }
+  .idle .ring { width: 130px; height: 130px; margin: 0 auto 18px; border-radius: 50%; border: 1px dashed rgba(255,255,255,.2); position: relative; }
+  .idle .ring::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0 75%, rgba(53,224,255,.45)); animation: spin 3s linear infinite; mask: radial-gradient(circle, transparent 52%, #000 53%); -webkit-mask: radial-gradient(circle, transparent 52%, #000 53%); }
+  .idle strong { display: block; color: var(--text); font-size: 1.05rem; margin-bottom: 4px; }
+  .verdict.busy .gauge .prog { animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  /* marked-up text */
+  #markedCard { margin-top: 20px; }
+  .doc { padding: 6px 26px 26px; }
+  .doc-s { margin-top: 20px; }
+  .doc-s h5 { margin: 0 0 6px; font-size: .8rem; color: var(--soft); font-weight: 700; }
+  .doc-b { font-size: 1rem; line-height: 2; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100ch; }
+  .doc-b.none { color: var(--soft); font-style: italic; }
+  .w { border-radius: 5px; padding: 2px 3px; margin: 0 -1px; cursor: help; background-repeat: no-repeat; background-size: 100% 100%; transition: filter .15s; }
+  .w:hover { filter: brightness(1.3); }
+  .w.f { background-image: linear-gradient(rgba(255,90,122, calc(.14 + .5 * var(--k))), rgba(255,90,122, calc(.14 + .5 * var(--k)))); box-shadow: inset 0 -2px 0 rgba(255,90,122, calc(.4 + .6 * var(--k))); color: #fff; }
+  .w.r { background-image: linear-gradient(rgba(70,240,180, calc(.08 + .3 * var(--k))), rgba(70,240,180, calc(.08 + .3 * var(--k)))); box-shadow: inset 0 -2px 0 rgba(70,240,180, calc(.35 + .6 * var(--k))); }
+  .sweep .w { background-size: 0% 100%; animation: sweep .4s ease-out forwards; animation-delay: calc(var(--i) * 40ms + 150ms); }
+  @keyframes sweep { to { background-size: 100% 100%; } }
+  .key { display: flex; gap: 20px; flex-wrap: wrap; font-size: .82rem; color: var(--soft); }
+  .key .w { cursor: default; }
+  #tip { position: fixed; z-index: 60; pointer-events: none; background: #14142a; border: 1px solid var(--line); padding: 7px 11px; border-radius: 9px; font-size: .8rem; opacity: 0; transition: opacity .1s; font-family: var(--mono); white-space: nowrap; box-shadow: 0 10px 30px #0008; }
+
+  /* batch */
+  .drop { margin: 24px; padding: 34px 20px; border: 1.5px dashed rgba(255,255,255,.22); border-radius: 18px; text-align: center; transition: border-color .2s, background .2s; cursor: pointer; display: block; color: var(--soft); font-weight: 400; }
+  .drop:hover, .drop.over { border-color: var(--cyan); background: rgba(53,224,255,.05); }
+  .drop strong { display: block; font-size: 1.05rem; margin-bottom: 4px; color: var(--text); }
+  .drop span { font-size: .86rem; }
+  .drop input { display: none; }
+  .b-tools { display: flex; gap: 10px; flex-wrap: wrap; padding: 0 24px 6px; align-items: center; font-size: .86rem; color: var(--soft); }
+  .bprog { height: 5px; background: rgba(255,255,255,.08); border-radius: 99px; margin: 14px 24px 0; overflow: hidden; display: none; }
+  .bprog i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--iris), var(--cyan)); transition: width .2s; }
+  .tbl-wrap { overflow-x: auto; padding: 8px 24px 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  th { text-align: left; color: var(--soft); font-weight: 600; font-size: .78rem; padding: 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 11px 10px; border-bottom: 1px solid rgba(255,255,255,.05); vertical-align: middle; }
+  td.t { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rbar { display: flex; align-items: center; gap: 10px; min-width: 150px; }
+  .rbar i { flex: 1; height: 7px; background: rgba(255,255,255,.08); border-radius: 99px; overflow: hidden; display: block; }
+  .rbar i b { display: block; height: 100%; border-radius: 99px; }
+  .rbar span { font-family: var(--mono); font-size: .78rem; width: 38px; text-align: right; }
+  .tag { padding: 3px 10px; border-radius: 99px; font-size: .74rem; font-weight: 700; white-space: nowrap; }
+  .tag.fake { background: rgba(255,90,122,.14); color: var(--coral); } .tag.check { background: rgba(255,180,84,.14); color: var(--amber); } .tag.real { background: rgba(70,240,180,.12); color: var(--mint); }
+  .summary { padding: 0 24px; font-size: .95rem; margin-top: 16px; display: none; }
+  .summary b { font-family: var(--display); font-weight: 600; }
+  tr.row-click { cursor: pointer; } tr.row-click:hover td { background: rgba(255,255,255,.03); }
+
+  footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--soft); font-size: .84rem; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .stack { display: flex; gap: 8px; flex-wrap: wrap; }
+  .stack span { padding: 4px 10px; border: 1px solid var(--line); border-radius: 99px; font-family: var(--mono); font-size: .74rem; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .sweep .w { animation: none; background-size: 100% 100%; }
+    .logo i::after, .idle .ring::after { animation: none; }
+    .gauge .prog, .lane .b, .poly, .dotp { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div id="tip" role="tooltip"></div>
+
+<nav>
+  <div class="wrap nav-in">
+    <a class="logo" href="#top"><i></i>ScamRadar</a>
+    <div class="links"><a href="#analyzer">Analyzer</a><a href="#batch">Batch scan</a></div>
+  </div>
+</nav>
+
+<main class="wrap" id="top">
+  <header class="hero">
+    <div>
+      <div class="pill"><b>Free scam check</b> for job seekers</div>
+      <h1>Spot the fake job <em>before it spots you.</em></h1>
+      <p class="sub">Paste any job posting and get an instant risk score, plus the exact words and details that look suspicious.</p>
+      <div class="cta">
+        <a class="btn pri" href="#analyzer">Analyze a posting</a>
+        <button class="btn sec" id="demoBtn" type="button">Run a scam example</button>
+      </div>
+    </div>
+    <div class="orb-wrap" aria-hidden="true">
+      <canvas id="orb"></canvas>
+      <div class="orb-tag bad">wire fee + bank details</div>
+      <div class="orb-tag ok">verified company profile</div>
+    </div>
+  </header>
+
+  <!-- ANALYZER -->
+  <section class="block" id="analyzer">
+    <div class="head"><h2>Analyze a posting</h2><p>Copy the details from the listing you are unsure about. The more you add, the better the check.</p></div>
+    <div class="console">
+      <div class="glass">
+        <div class="panel-h">
+          <h3>Job posting</h3>
+          <div class="chips"><button class="chip" type="button" data-sample="real">Try a real example</button><button class="chip" type="button" data-sample="fake">Try a scam example</button></div>
+        </div>
+        <form id="form" autocomplete="off" novalidate>
+          <div class="f"><label for="title">Job title</label><input type="text" id="title" placeholder="e.g. Marketing Intern"></div>
+          <div class="f"><div class="r"><label for="company_profile">Company profile</label><span class="cnt" data-for="company_profile"></span></div><textarea id="company_profile" placeholder="Who is hiring, in their own words"></textarea></div>
+          <div class="f"><div class="r"><label for="description">Description</label><span class="cnt" data-for="description"></span></div><textarea id="description" class="tall" placeholder="What the job involves"></textarea></div>
+          <div class="f"><div class="r"><label for="requirements">Requirements</label><span class="cnt" data-for="requirements"></span></div><textarea id="requirements" placeholder="Skills and qualifications asked for"></textarea></div>
+          <div class="trio">
+            <div class="f"><label for="employment_type">Employment type</label><select id="employment_type"></select></div>
+            <div class="f"><label for="required_experience">Experience</label><select id="required_experience"></select></div>
+            <div class="f"><label for="required_education">Education</label><select id="required_education"></select></div>
+          </div>
+          <label class="tgl"><span>Remote position</span><input type="checkbox" id="telecommuting"><span class="sw"></span></label>
+          <label class="tgl"><span>Company logo shown</span><input type="checkbox" id="has_company_logo" checked><span class="sw"></span></label>
+          <label class="tgl"><span>Posting asks screening questions</span><input type="checkbox" id="has_questions"><span class="sw"></span></label>
+          <label class="tgl"><span>Analyze live as I type</span><input type="checkbox" id="liveMode"><span class="sw"></span></label>
+          <button class="btn pri go" id="go" type="submit">Scan posting</button>
+          <p class="msg" id="msg" aria-live="polite"></p>
+        </form>
+      </div>
+
+      <aside class="glass verdict" id="verdict" aria-live="polite" aria-label="Scan result"></aside>
+    </div>
+
+    <div class="glass" id="markedCard" hidden>
+      <div class="panel-h"><h3>Marked-up posting</h3>
+        <div class="key"><span><span class="w f" style="--k:.8">word</span> looks suspicious</span><span><span class="w r" style="--k:.8">word</span> looks reassuring</span><span>Hover a marked word for details</span></div></div>
+      <div class="doc" id="doc"></div>
+    </div>
+  </section>
+
+  <!-- BATCH -->
+  <section class="block" id="batch">
+    <div class="head"><h2>Batch scan</h2><p>Checking several listings? Upload a CSV and see them ranked from riskiest to safest.</p></div>
+    <div class="glass">
+      <label class="drop" id="drop" for="csv"><input type="file" id="csv" accept=".csv,text/csv">
+        <strong>Drop a CSV here, or click to choose one</strong>
+        <span>Needs at least a title or description column. Download the sample to see the format.</span>
+      </label>
+      <div class="b-tools"><button class="chip" id="sampleCsv" type="button">Download a sample CSV</button><button class="chip" id="exportCsv" type="button" hidden>Export results</button><span id="bmsg"></span></div>
+      <div class="bprog" id="bprog"><i></i></div>
+      <div class="summary" id="bsum"></div>
+      <div class="tbl-wrap" id="btbl" hidden>
+        <table><thead><tr><th>Job title</th><th>Fake risk</th><th>Verdict</th></tr></thead><tbody id="brows"></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div>Results are an automated estimate, not proof. Always verify an employer independently before sharing personal details or money.</div>
+    </footer>
+</main>
+
+<script>
+const API_URL = "/predict";
+
+const OPTIONS = {
+  employment_type: ["Unknown", "Full-time", "Part-time", "Contract", "Temporary", "Other"],
+  required_experience: ["Unknown", "Internship", "Entry level", "Associate", "Mid-Senior level", "Director", "Executive", "Not Applicable"],
+  required_education: ["Unknown", "High School or equivalent", "Some College Coursework Completed", "Associate Degree",
+    "Bachelor's Degree", "Master's Degree", "Doctorate", "Professional", "Certification",
+    "Vocational", "Vocational - HS Diploma", "Vocational - Degree", "Some High School Coursework", "Unspecified"]
+};
+const SAMPLES = {
+  real: {
+    title: "Marketing Intern",
+    company_profile: "We're Food52, and we've created a groundbreaking and award-winning cooking site. We support, connect, and celebrate home cooks, and give them everything they need in one place.",
+    description: "Food52, a fast-growing, James Beard Award-winning online food community and crowd-sourced and curated recipe hub, is currently interviewing full- and part-time unpaid interns to work in a small team of editors, executives, and developers in its New York City headquarters. Reproducing and/or repackaging existing Food52 content for a number of partner sites, such as Huffington Post.",
+    requirements: "Experience with content management systems a major plus. Familiar with the Food52 brand and site. Strong written communication skills. Currently enrolled in or recently graduated from a university.",
+    employment_type: "Other", required_experience: "Internship", required_education: "Unknown",
+    telecommuting: 0, has_company_logo: 1, has_questions: 0
+  },
+  fake: {
+    title: "Data Entry Clerk - Work From Home",
+    company_profile: "",
+    description: "URGENT HIRING!!! Earn $5000 weekly working from home. No experience needed. No interview required. Start immediately. Just send us your bank account details and a small registration fee to receive your starter kit and begin earning today.",
+    requirements: "Must have a computer and internet connection. Must be able to provide personal identification and bank information. Contact us via WhatsApp only.",
+    employment_type: "Unknown", required_experience: "Unknown", required_education: "Unknown",
+    telecommuting: 1, has_company_logo: 0, has_questions: 0
+  }
+};
+const TEXTS = [["title", "Job title"], ["company_profile", "Company profile"], ["description", "Description"], ["requirements", "Requirements"]];
+const SELECTS = Object.keys(OPTIONS);
+const FLAGS = ["telecommuting", "has_company_logo", "has_questions"];
+
+const $ = id => document.getElementById(id);
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const list = a => a.length < 2 ? a.join("") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1];
+const fmt = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(1);
+const stateOf = p => p >= .5 ? { k: "fake", t: "Likely a scam", d: "Strong signs of a fraudulent listing. Don't share personal or financial details." }
+                   : p >= .25 ? { k: "check", t: "Needs a closer look", d: "Leans legitimate, but some signals are worth double-checking." }
+                   : { k: "real", t: "Looks legitimate", d: "Reads like a genuine posting. Still verify the employer before applying." };
+
+SELECTS.forEach(id => $(id).innerHTML = OPTIONS[id].map(o => `<option>${esc(o)}</option>`).join(""));
+
+
+/* ---------- form helpers ---------- */
+function updateCounts() {
+  document.querySelectorAll(".cnt").forEach(el => { const n = $(el.dataset.for).value.length; el.textContent = n ? n.toLocaleString() + " chars" : ""; });
+}
+function fill(d) {
+  TEXTS.forEach(([id]) => $(id).value = d[id] ?? "");
+  SELECTS.forEach(id => $(id).value = d[id] ?? "Unknown");
+  FLAGS.forEach(id => $(id).checked = !!d[id]);
+  updateCounts();
+}
+function payload() {
+  const p = {};
+  TEXTS.forEach(([id]) => p[id] = $(id).value.trim());
+  SELECTS.forEach(id => p[id] = $(id).value);
+  FLAGS.forEach(id => p[id] = $(id).checked ? 1 : 0);
+  return p;
+}
+document.querySelectorAll("[data-sample]").forEach(b => b.onclick = () => { fill(SAMPLES[b.dataset.sample]); $("msg").textContent = "Example loaded."; $("msg").className = "msg"; if ($("liveMode").checked) scan(true); });
+$("demoBtn").onclick = () => { fill(SAMPLES.fake); $("analyzer").scrollIntoView(); setTimeout(() => scan(), reduce ? 0 : 450); };
+
+/* ---------- offline preview scorer (used only if the API is unreachable) ---------- */
+const LEX = { fee: 1.3, bank: 1.1, wire: 1.5, urgent: .9, earn: .9, weekly: .8, whatsapp: 1.4, telegram: 1.3, registration: 1.1, immediately: .6,
+  guaranteed: 1.0, income: .6, money: .9, payment: .8, kit: .8, identification: .8, investment: .8, home: .4, entry: .5,
+  experience: -.5, team: -.6, university: -.8, degree: -.6, skills: -.3, development: -.5, management: -.4, engineering: -.6, software: -.5,
+  customers: -.4, benefits: -.3, communication: -.4, strong: -.3, enrolled: -.6, brand: -.6, content: -.4, design: -.4, project: -.4, business: -.3, clients: -.3 };
+function previewScore(p) {
+  const text = TEXTS.map(([id]) => p[id]).join(" ");
+  const words = {}, counts = {};
+  for (const m of text.matchAll(/\b\w\w+\b/g)) { const t = m[0].toLowerCase(); if (LEX[t] !== undefined) { words[t] = LEX[t]; counts[t] = (counts[t] || 0) + 1; } }
+  const signals = Object.keys(words).map(t => ({ label: t, kind: "word", weight: words[t] * counts[t] }));
+  const field = (label, w) => signals.push({ label, kind: "field", weight: w });
+  if (!p.company_profile) field("No company profile", .9);
+  if (!p.has_company_logo) field("No company logo", .8);
+  if (!p.has_questions) field("No screening questions", .3);
+  if (p.description.length < 200) field("Very short description", .6);
+  const probability = 1 / (1 + Math.exp(2.2 - signals.reduce((s, x) => s + x.weight, 0)));
+  signals.sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight));
+  return { probability, words, signals: signals.slice(0, 12), preview: true };
+}
+let apiDown = null;
+async function predict(p) {
+  try {
+    const r = await fetch(API_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) });
+    if (!r.ok) throw new Error(`Server answered ${r.status} ${r.statusText}`);
+    const j = await r.json(); j.words = j.words || {}; j.signals = j.signals || []; apiDown = null; return j;
+  } catch (e) { apiDown = e.message; const j = previewScore(p); j.failure = e.message; return j; }
+}
+
+/* ---------- risk themes for the radar (grouping of the model's signals) ---------- */
+const THEMES = [
+  ["Money requests", w => /^(fee|bank|wire|payment|money|investment|deposit|transfer|cash|account|salary|income|earn|earning|paid)$/.test(w)],
+  ["Urgency & hype", w => /^(urgent|urgently|immediately|hiring|asap|today|guaranteed|limited|quick|instantly|apply|start)$/.test(w)],
+  ["Off-platform contact", w => /^(whatsapp|telegram|gmail|yahoo|email|contact|text|phone|hangouts|skype)$/.test(w)],
+];
+function themeScores(p, res) {
+  const sums = THEMES.map(() => 0);
+  for (const m of (p.title + " " + p.description + " " + p.requirements + " " + p.company_profile).matchAll(/\b\w\w+\b/g)) {
+    const w = m[0].toLowerCase(), wt = res.words[w];
+    THEMES.forEach(([, test], i) => { if (test(w)) sums[i] += Math.max(0, wt ?? .3); });
+  }
+  const squash = s => 1 - Math.exp(-s / 2.2);
+  const missing = (!p.company_profile ? 1 : 0) + (!p.has_company_logo ? 1 : 0);
+  const vague = (p.description.length < 250 ? 1 : 0) + (!p.has_questions ? .5 : 0) + (p.required_education === "Unknown" && p.required_experience === "Unknown" ? .5 : 0);
+  return [...THEMES.map(([n], i) => [n, squash(sums[i])]), ["Missing company info", missing / 2], ["Vague role", Math.min(1, vague / 2)]];
+}
+
+/* ---------- verdict card ---------- */
+function ringTicks() {
+  let s = ""; for (let i = 0; i < 60; i++) { const a = i / 60 * Math.PI * 2, r1 = 104, r2 = i % 5 ? 100 : 97;
+    s += `<line class="tk" x1="${110 + Math.sin(a) * r1}" y1="${110 - Math.cos(a) * r1}" x2="${110 + Math.sin(a) * r2}" y2="${110 - Math.cos(a) * r2}"/>`; }
+  return s;
+}
+const CIRC = 2 * Math.PI * 86;
+function gaugeHTML() {
+  return `<div class="gauge"><svg viewBox="0 0 220 220">${ringTicks()}
+    <circle class="track" cx="110" cy="110" r="86" fill="none" stroke-width="12"/>
+    <circle class="prog" id="prog" cx="110" cy="110" r="86" fill="none" stroke-width="12" stroke-linecap="round" stroke-dasharray="${CIRC}" stroke-dashoffset="${CIRC}" transform="rotate(-90 110 110)"/></svg>
+    <div class="g-mid"><b id="pctN">0%</b><span>fake risk</span></div></div>`;
+}
+function radarHTML(vals) {
+  const cx = 150, cy = 130, R = 86, n = vals.length;
+  const pt = (i, f) => { const a = i / n * Math.PI * 2 - Math.PI / 2; return [cx + Math.cos(a) * R * f, cy + Math.sin(a) * R * f]; };
+  const ring = f => vals.map((_, i) => pt(i, f).join(",")).join(" ");
+  const labels = vals.map(([name], i) => { const [x, y] = pt(i, 1.2); const anc = Math.abs(x - cx) < 8 ? "middle" : x > cx ? "start" : "end"; return `<text x="${x}" y="${y + 3}" text-anchor="${anc}">${name}</text>`; }).join("");
+  return `<svg viewBox="0 0 300 260">${[.25, .5, .75, 1].map(f => `<polygon points="${ring(f)}" fill="none" stroke="rgba(255,255,255,.1)"/>`).join("")}
+    ${vals.map((_, i) => `<line x1="${cx}" y1="${cy}" x2="${pt(i, 1)[0]}" y2="${pt(i, 1)[1]}" stroke="rgba(255,255,255,.1)"/>`).join("")}
+    <polygon class="poly" id="poly" points="${vals.map((_, i) => pt(i, 0.02).join(",")).join(" ")}" data-target="${vals.map(([, v], i) => pt(i, Math.max(.04, v)).join(",")).join(" ")}"/>
+    ${vals.map(([, v], i) => `<circle class="dotp" r="3.5" cx="${pt(i, .02)[0]}" cy="${pt(i, .02)[1]}" data-x="${pt(i, Math.max(.04, v))[0]}" data-y="${pt(i, Math.max(.04, v))[1]}"/>`).join("")}${labels}</svg>`;
+}
+function idleVerdict() {
+  const v = $("verdict"); v.className = "glass verdict";
+  v.innerHTML = `<div class="idle"><div class="ring"></div><strong>Ready to scan</strong>Fill in a posting or load an example, then press Scan posting.</div>`;
+}
+function countTo(el, to) {
+  if (reduce) { el.textContent = to + "%"; return; }
+  const t0 = performance.now();
+  (function f(t) { const k = Math.min(1, (t - t0) / 1100); el.textContent = Math.round(to * (1 - Math.pow(1 - k, 3))) + "%"; if (k < 1) requestAnimationFrame(f); })(t0);
+}
+let lastReport = "";
+function renderVerdict(p, res) {
+  const prob = res.probability, pct = Math.round(prob * 100), st = stateOf(prob);
+  const sigs = res.signals.slice(0, 7), maxS = Math.max(.01, ...sigs.map(s => Math.abs(s.weight)));
+  const up = res.signals.filter(s => s.weight > 0).slice(0, 3).map(s => s.label);
+  const down = res.signals.filter(s => s.weight < 0).slice(0, 3).map(s => s.label);
+  const why = prob >= .25 && up.length ? `Raised mostly by ${list(up.map(x => "“" + esc(x) + "”"))}.` : down.length ? `Lowered mostly by ${list(down.map(x => "“" + esc(x) + "”"))}.` : "";
+  const themes = themeScores(p, res);
+  lastReport = `ScamRadar report\nPosting: ${p.title || "(untitled)"}\nFake risk: ${pct}% (${st.t})\n${why.replace(/[“”]/g, '"').replace(/&quot;/g, '"')}`;
+  const v = $("verdict"); v.className = "glass verdict " + st.k;
+  v.innerHTML = `
+    <div class="v-top">${gaugeHTML()}
+      <div class="v-txt"><h4>${st.t}</h4><p>${st.d}</p>${why ? `<p style="margin-top:8px;color:var(--text)">${why}</p>` : ""}
+        <div class="v-actions"><button class="chip" id="copyBtn" type="button">Copy report</button><button class="chip" id="toMarked" type="button">View marked-up text</button></div></div></div>
+    <div class="sub-h">Risk themes</div><div class="radar-wrap">${radarHTML(themes)}</div>
+    ${sigs.length ? `<div class="sub-h">What stood out</div>${sigs.map(s => `<div class="sig"><div class="n ${s.kind}" title="${esc(s.label)}">${esc(s.label)}</div>
+      <div class="lane"><div class="b ${s.weight > 0 ? "f" : "r"}" data-w="${Math.abs(s.weight) / maxS * 50}"></div></div><div class="v"></div></div>`).join("")}
+      <div class="axis"><span></span><div><span>reassuring</span><span>suspicious</span></div><span></span></div>` : ""}
+    ${res.preview ? `<div class="note"><b>Rough estimate.</b> We couldn't reach the full analysis service, so this result is based on a simplified check. Please try again in a moment.</div>` : ""}`;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    $("prog").style.strokeDashoffset = CIRC * (1 - prob);
+    countTo($("pctN"), pct);
+    const poly = $("poly"); poly.setAttribute("points", poly.dataset.target);
+    document.querySelectorAll(".dotp").forEach(d => { d.setAttribute("cx", d.dataset.x); d.setAttribute("cy", d.dataset.y); });
+    document.querySelectorAll("#verdict .lane .b").forEach(b => b.style.width = b.dataset.w + "%");
+  }));
+  $("copyBtn").onclick = async e => { const b = e.target; try { await navigator.clipboard.writeText(lastReport); b.textContent = "Copied"; } catch { b.textContent = "Copy failed"; } setTimeout(() => b.textContent = "Copy report", 1600); };
+  $("toMarked").onclick = () => $("markedCard").scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+}
+
+/* ---------- marked-up text ---------- */
+function markup(text, words, maxW, c) {
+  let out = "", at = 0;
+  for (const m of text.matchAll(/\b\w\w+\b/g)) {
+    out += esc(text.slice(at, m.index));
+    const w = words[m[0].toLowerCase()];
+    if (w !== undefined && Math.abs(w) >= maxW * .18) {
+      out += `<span class="w ${w > 0 ? "f" : "r"}" style="--k:${Math.min(1, Math.abs(w) / maxW).toFixed(2)};--i:${Math.min(c.n++, 45)}" data-w="${w}" data-t="${esc(m[0])}">${esc(m[0])}</span>`;
+    } else out += esc(m[0]);
+    at = m.index + m[0].length;
+  }
+  return out + esc(text.slice(at));
+}
+function renderMarked(p, res) {
+  const w = res.words, maxW = Math.max(.01, ...Object.values(w).map(Math.abs)), c = { n: 0 };
+  const el = $("doc"); el.className = "doc";
+  el.innerHTML = TEXTS.map(([id, label]) => `<div class="doc-s"><h5>${label}</h5>` +
+    (p[id] ? `<div class="doc-b">${markup(p[id], w, maxW, c)}</div>` : `<div class="doc-b none">Not provided</div>`) + `</div>`).join("");
+  $("markedCard").hidden = false; void el.offsetWidth; el.classList.add("sweep");
+}
+const tip = $("tip");
+document.addEventListener("mouseover", e => {
+  const w = e.target.closest(".doc .w"); if (!w) return; const v = parseFloat(w.dataset.w);
+  const strong = Math.abs(v) >= 1 ? "Very" : Math.abs(v) >= .5 ? "Fairly" : "Slightly";
+  tip.innerHTML = `${esc(w.dataset.t.toLowerCase())}: <b style="color:${v > 0 ? "var(--coral)" : "var(--mint)"}">${strong} ${v > 0 ? "suspicious" : "reassuring"}</b>`;
+  const r = w.getBoundingClientRect(); tip.style.left = Math.max(8, Math.min(innerWidth - 230, r.left)) + "px"; tip.style.top = (r.top - 42) + "px"; tip.style.opacity = 1;
+});
+document.addEventListener("mouseout", e => { if (e.target.closest(".doc .w")) tip.style.opacity = 0; });
+
+/* ---------- scan ---------- */
+let seq = 0;
+async function scan(silent) {
+  const p = payload(), msg = $("msg");
+  if (!p.title && !p.description) { msg.className = "msg err"; msg.textContent = "Add a job title or a description to scan."; return; }
+  msg.className = "msg"; msg.textContent = "";
+  const mine = ++seq, go = $("go"), v = $("verdict");
+  if (!silent) { go.disabled = true; go.textContent = "Scanning…"; }
+  v.classList.add("busy");
+  const t0 = performance.now(), res = await predict(p);
+  if (!silent && !reduce) await new Promise(r => setTimeout(r, Math.max(0, 700 - (performance.now() - t0))));
+  if (mine !== seq) return;               // a newer live request superseded this one
+  go.disabled = false; go.textContent = "Scan posting"; v.classList.remove("busy");
+  renderVerdict(p, res); renderMarked(p, res);
+  if (!silent && innerWidth < 980) v.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+}
+$("form").addEventListener("submit", e => { e.preventDefault(); scan(); });
+let liveTimer;
+[...TEXTS.map(t => t[0]), ...SELECTS, ...FLAGS].forEach(id => $(id).addEventListener("input", () => {
+  updateCounts(); if (!$("liveMode").checked) return; clearTimeout(liveTimer); liveTimer = setTimeout(() => scan(true), 700);
+}));
+document.addEventListener("keydown", e => { if (e.ctrlKey && e.key === "Enter") scan(); });
+
+/* ---------- batch ---------- */
+function parseCSV(t) {
+  const rows = []; let row = [], cur = "", q = false;
+  for (let i = 0; i < t.length; i++) { const c = t[i];
+    if (q) { if (c === '"') { if (t[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+    else if (c === '"') q = true; else if (c === ",") { row.push(cur); cur = ""; }
+    else if (c === "\n") { row.push(cur); rows.push(row); row = []; cur = ""; } else if (c !== "\r") cur += c; }
+  if (cur || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter(r => r.some(x => x.trim()));
+}
+const truthy = v => /^(1|true|yes|y)$/i.test(String(v ?? "").trim()) ? 1 : 0;
+let batchResults = [];
+async function runBatch(text) {
+  const rows = parseCSV(text); if (rows.length < 2) { $("bmsg").textContent = "That file has no data rows."; return; }
+  const head = rows[0].map(h => h.trim().toLowerCase()), idx = n => head.indexOf(n);
+  if (idx("title") < 0 && idx("description") < 0) { $("bmsg").textContent = "Couldn't find a title or description column."; return; }
+  const get = (r, n, d = "") => idx(n) < 0 ? d : (r[idx(n)] ?? d).trim();
+  const body = rows.slice(1, 201); $("bmsg").textContent = rows.length > 201 ? "Scanning the first 200 rows." : "";
+  batchResults = []; $("brows").innerHTML = ""; $("btbl").hidden = false; $("bprog").style.display = "block"; $("exportCsv").hidden = true;
+  for (let i = 0; i < body.length; i++) {
+    const r = body[i];
+    const p = { title: get(r, "title"), company_profile: get(r, "company_profile"), description: get(r, "description"), requirements: get(r, "requirements"),
+      employment_type: get(r, "employment_type", "Unknown") || "Unknown", required_experience: get(r, "required_experience", "Unknown") || "Unknown", required_education: get(r, "required_education", "Unknown") || "Unknown",
+      telecommuting: truthy(get(r, "telecommuting")), has_company_logo: truthy(get(r, "has_company_logo")), has_questions: truthy(get(r, "has_questions")) };
+    const res = await predict(p); batchResults.push({ p, res });
+    $("bprog").firstElementChild.style.width = ((i + 1) / body.length * 100) + "%";
+  }
+  batchResults.sort((a, b) => b.res.probability - a.res.probability);
+  const colors = { fake: "var(--coral)", check: "var(--amber)", real: "var(--mint)" };
+  $("brows").innerHTML = batchResults.map(({ p, res }, i) => { const st = stateOf(res.probability), pc = Math.round(res.probability * 100);
+    return `<tr class="row-click" data-i="${i}" title="Open in analyzer"><td class="t">${esc(p.title || "(untitled)")}</td>
+      <td><div class="rbar"><i><b style="width:${pc}%;background:${colors[st.k]}"></b></i><span>${pc}%</span></div></td><td><span class="tag ${st.k}">${st.t}</span></td></tr>`; }).join("");
+  const flagged = batchResults.filter(b => b.res.probability >= .5).length;
+  $("bsum").style.display = "block"; $("bsum").innerHTML = `<b>${flagged}</b> of ${batchResults.length} postings flagged as likely scams.${apiDown ? " (Simplified check: full analysis was unavailable.)" : ""}`;
+  $("exportCsv").hidden = false; setTimeout(() => $("bprog").style.display = "none", 600);
+}
+$("brows").addEventListener("click", e => { const tr = e.target.closest("tr"); if (!tr) return; const { p } = batchResults[+tr.dataset.i]; fill(p); $("analyzer").scrollIntoView(); setTimeout(() => scan(), 350); });
+$("csv").onchange = e => { const f = e.target.files[0]; if (f) f.text().then(runBatch); };
+const drop = $("drop");
+["dragover", "dragenter"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (f) f.text().then(runBatch); });
+const toCSV = rows => rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\n");
+function download(name, text) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" })); a.download = name; a.click(); }
+$("sampleCsv").onclick = () => { const k = ["title", "company_profile", "description", "requirements", "employment_type", "required_experience", "required_education", "telecommuting", "has_company_logo", "has_questions"];
+  download("sample_postings.csv", toCSV([k, ...Object.values(SAMPLES).map(s => k.map(x => s[x]))])); };
+$("exportCsv").onclick = () => download("scamradar_results.csv", toCSV([["title", "fake_probability", "verdict"], ...batchResults.map(({ p, res }) => [p.title, res.probability.toFixed(4), stateOf(res.probability).t])]));
+
+/* ---------- hero radar orb ---------- */
+(function orb() {
+  const cv = $("orb"), ctx = cv.getContext("2d"); let S = 0;
+  const size = () => { const dpr = Math.min(2, devicePixelRatio || 1); S = cv.clientWidth; cv.width = cv.height = S * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
+  size(); addEventListener("resize", size);
+  const blips = Array.from({ length: 16 }, (_, i) => ({ a: Math.random() * Math.PI * 2, r: .2 + Math.random() * .72, bad: i % 5 === 0, hit: -99 }));
+  let prev = 0;
+  function draw(ts) {
+    const t = ts / 1000, c = S / 2, R = S * .46, sweep = (t * .9) % (Math.PI * 2);
+    ctx.clearRect(0, 0, S, S);
+    const bg = ctx.createRadialGradient(c, c, 0, c, c, R); bg.addColorStop(0, "rgba(124,108,255,.16)"); bg.addColorStop(1, "rgba(124,108,255,.02)");
+    ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(c, c, R, 0, 7); ctx.fill();
+    ctx.strokeStyle = "rgba(140,150,255,.28)"; ctx.lineWidth = 1;
+    [.25, .5, .75, 1].forEach(f => { ctx.beginPath(); ctx.arc(c, c, R * f, 0, 7); ctx.stroke(); });
+    ctx.beginPath(); ctx.moveTo(c - R, c); ctx.lineTo(c + R, c); ctx.moveTo(c, c - R); ctx.lineTo(c, c + R); ctx.stroke();
+    if (ctx.createConicGradient) {
+      const g = ctx.createConicGradient(sweep - Math.PI * .55, c, c); g.addColorStop(0, "rgba(53,224,255,0)"); g.addColorStop(.17, "rgba(53,224,255,.38)"); g.addColorStop(.1701, "rgba(53,224,255,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c, c, R, 0, 7); ctx.fill();
+    }
+    ctx.strokeStyle = "rgba(53,224,255,.9)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(c, c); ctx.lineTo(c + Math.cos(sweep) * R, c + Math.sin(sweep) * R); ctx.stroke();
+    blips.forEach(b => {
+      const d = (sweep - b.a + Math.PI * 2) % (Math.PI * 2); if (d < (t - prev) * .9 + .06) b.hit = t;
+      const age = t - b.hit, al = reduce ? 1 : Math.max(0, 1 - age / 3.2); if (al <= 0) return;
+      const x = c + Math.cos(b.a) * R * b.r, y = c + Math.sin(b.a) * R * b.r, col = b.bad ? "255,90,122" : "70,240,180";
+      ctx.fillStyle = `rgba(${col},${al})`; ctx.shadowColor = `rgb(${col})`; ctx.shadowBlur = 14; ctx.beginPath(); ctx.arc(x, y, b.bad ? 5 : 3.5, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+      if (b.bad) { ctx.strokeStyle = `rgba(${col},${al * .6})`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, 5 + age * 9, 0, 7); ctx.stroke(); }
+    });
+    prev = t; if (!reduce) requestAnimationFrame(draw);
+  }
+  if (reduce) { blips.forEach(b => b.hit = 0); draw(1000); } else requestAnimationFrame(draw);
+})();
+
+idleVerdict(); fill({ has_company_logo: 1 });
+</script>
+</body>
+</html>
